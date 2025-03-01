@@ -15,10 +15,6 @@ Below is a list of selected projects. Click on the links to explore each one in 
 
 Optimizing Music Releases: Analyzing top platforms, popular songs, and market trends. (Tool: Wolfram Notebook)
 
-🔑 Makerspace Escape Rooms
-
-Escape Room at Urbana Free Library: An interactive experience designed for community engagement.
-
 📊 Big Data Analytics in Finance
 
 Property Assessment For Cook County Illinois – Predicting property values using Random Forest in R.
