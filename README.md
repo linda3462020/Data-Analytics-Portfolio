@@ -1,7 +1,5 @@
-# Data-Science-Portfolio
+# Data Science & Analytics Portfolio
 A collection of my data science, analytics, and engineering projects.
-
-📊 Data Science & Analytics Portfolio
 
 Welcome to my portfolio! This repository contains an overview of my data science, analytics, and engineering projects. Here, you'll find work related to data storytelling, big data analysis, business intelligence, and more.
 
