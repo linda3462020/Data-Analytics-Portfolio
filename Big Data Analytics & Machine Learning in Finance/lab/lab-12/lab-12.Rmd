@@ -1,0 +1,108 @@
+---
+title: "Lab 12 - Lasso Regression"
+author: Chu-Chun Ku
+output:
+  html_document:
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+## 0 load the packages 
+```{r}
+library(glmnet)
+library(ggplot2)
+```
+
+## 1 create a data frame
+```{r}
+# load the data 
+df <- read.csv('Hitters.csv')
+# first six rows
+head(df)
+# column names
+names(df)
+# dimension 
+dim(df)
+# number of rows with missing values 
+sum(is.na(df))
+```
+
+## 2 remove rows that have missing values in any variable  
+```{r}
+# remove rows with any missing values 
+df <- na.omit(df)
+# dimension 
+dim(df)
+# number of missing values 
+sum(is.na(df))
+sum(is.na(df)) == 0
+```
+
+## 3 convert a data frame of predictors to a matrix 
+```{r}
+# convert a data frame of predictors to a matrix and create dummy variables for character variables 
+f <- formula(Salary~0+.)
+x <- model.matrix(f, data = df)
+# first six rows of x
+head(x)
+# outcome variable
+y <- df$Salary
+```
+
+
+## 4 Fit a lasso regression model
+```{r}
+# fit a lasso regression model 
+fit <- cv.glmnet(x=x, y=y)
+# Display the sequence of lambda values 
+fit$lambda
+# Save the smallest, optimal, and largest lambdas
+lambda.large <- max(fit$lambda)
+lambda.best <- fit$lambda.min
+lambda.small <- min(fit$lambda)
+
+```
+
+## 5 model with a small lambda value 
+```{r}
+# Display plot of coefficients
+library(dplyr)
+library(tidyr)
+betas=as.matrix(fit$glmnet.fit$beta)
+lambdas = fit$lambda
+names(lambdas) = colnames(betas)
+as.data.frame(betas) %>% 
+  tibble::rownames_to_column("variable") %>% 
+  pivot_longer(-variable) %>% 
+  mutate(lambda=lambdas[name]) %>% 
+  ggplot(aes(x=lambda,y=value,col=variable)) + 
+  geom_line() + 
+  scale_x_log10()
+
+
+```
+
+Explain the patterns that you see. What happens to the magnitudes of the coefficients (y-axis values) as you move from left to right along the x-axis? Why?
+Ans: We can see when the x-axis values, lambda value, become bigger, the y-axis values, beta values, will be punished and end in zero. 
+
+
+## 6 Cross-validated mean-squared error for lambdas
+```{r}
+# CV MSE for large, small, and best lambdas
+fit$cvm[which.max(fit$lambda)] 
+fit$cvm[which.min(fit$lambda)]
+min(fit$cvm)
+fit$cvm[fit$lambda == lambda.best]
+```
+
+Which one is smallest? Explain why.
+The third and fourth ones have the smallest cross-validation error, because, in the third row, we requested to find the min cvm. In addition, the max and min lambda usually do not have the best csm value.
+## 7 Predicted values
+```{r}
+# Predict salaries and store in yhat
+df$yhat <- predict(fit, newx = x)
+# MSE of predictions
+mean((df$Salary - df$yhat)^2)
+```
