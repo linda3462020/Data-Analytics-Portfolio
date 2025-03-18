@@ -1,0 +1,219 @@
+---
+title: "Lab 11 - Variable Selection"
+author: Chu-Chun Ku
+output:
+  html_document:
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+
+## 1 Number of possible models
+```{r}
+# (a) How many possible models are there?
+2^22
+# (b)	You consider using Best Subset Selection to choose a model. How many models will this procedure consider? 
+2^22
+# (c) You consider using Forward Stepwise Selection.  How many models will this procedure consider?
+1+22*(22+1)/2
+
+```
+
+## 2 fit a multiple linear regression model
+
+Load the built-in Seatbelts dataset that was used in the lecture on Variable Selection. As in class, we will build a model of DriversKilled, and we will consider four possible predictors: law, PetrolPrice, kms, and kms2.
+
+```{r}
+# Load the dataset into a tibble. Keep the outcome variable and the predictors law, PetrolPrice, and kms. Create the variable kms2 = kms^2
+library(tidyverse)
+library(boot)
+seatbelts <- as_tibble(datasets::Seatbelts)
+seatbelts <- seatbelts %>%
+  select(DriversKilled, law, PetrolPrice, kms) %>%
+  mutate(kms2 = kms^2)
+```
+
+
+```{r}
+# (a) Best subset selection with 5-fold cross-validation
+set.seed(3)
+f0_1 <- formula(DriversKilled ~ 1)
+
+f1_1 <- formula(DriversKilled ~ law)
+f1_2 <- formula(DriversKilled ~ PetrolPrice)
+f1_3 <- formula(DriversKilled ~ kms)
+f1_4 <- formula(DriversKilled ~ kms2)
+
+f2_1 <- formula(DriversKilled ~ law + PetrolPrice)
+f2_2 <- formula(DriversKilled ~ law + kms)
+f2_3 <- formula(DriversKilled ~ law + kms2)
+f2_4 <- formula(DriversKilled ~ PetrolPrice + kms)
+f2_5 <- formula(DriversKilled ~ PetrolPrice + kms2)
+f2_6 <- formula(DriversKilled ~ kms + kms2)
+
+f3_1 <- formula(DriversKilled ~ PetrolPrice + kms + kms2)
+f3_2 <- formula(DriversKilled ~ law + kms + kms2)
+f3_3 <- formula(DriversKilled ~ law + PetrolPrice + kms2)
+f3_4 <- formula(DriversKilled ~ law + PetrolPrice + kms)
+
+f4_1 <- formula(DriversKilled ~ law + PetrolPrice + kms + kms2)
+
+formulas <- list(f0_1,
+  f1_1, f1_2, f1_3, f1_4,
+  f2_1, f2_2, f2_3, f2_4, f2_5, f2_6,
+  f3_1, f3_2, f3_3, f3_4,
+  f4_1)
+
+cv_fun <- function(f) {
+  glmfit <- glm(f, data = seatbelts)
+  cv.glm(data = seatbelts, glmfit, K=5)$delta[1]
+}
+
+formulas_cv <- vector("numeric", length(formulas))
+
+for (i in 1:length(formulas)) {
+  formulas_cv[[i]] <-cv_fun(formulas[[i]])
+}
+
+best_model <- which.min(formulas_cv)
+
+formulas[[best_model]]
+formulas_cv[[best_model]]
+```
+
+How does your answer compare to what we found in class?
+Ans: The model is the same (DriversKilled ~ law + PetrolPrice + kms2), and the MSE are similar (530.2109 & 531.6267). 
+
+```{r}
+# (b) Forward Stepwise Selection with 5-fold cross-validation
+set.seed(3)
+forward_cv <- vector("numeric", 5)
+forward_formulas <- vector(mode = "list", 5)
+
+forward_cv[1] <- cv_fun(f0_1)
+forward_formulas[[1]] <- f0_1
+
+M_formulas <- list(f1_1, f1_2, f1_3, f1_4)
+cv <- sapply(M_formulas, cv_fun)
+forward_cv[2] <- min(cv) 
+forward_formulas[[2]] <- M_formulas[[which.min(cv)]]
+forward_formulas[[2]] 
+
+M_formulas <- list(f2_1, f2_4, f2_5)
+print(as.character(M_formulas))
+
+cv <- sapply(M_formulas, cv_fun)
+forward_cv[3] <- min(cv)
+forward_formulas[[3]] <- M_formulas[[which.min(cv)]]
+forward_formulas[[3]]
+
+M_formulas <- list(f3_1, f3_3)
+print(as.character(M_formulas))
+
+cv <- sapply(M_formulas, cv_fun)
+forward_cv[4] <- min(cv)
+forward_formulas[[4]] <- M_formulas[[which.min(cv)]]
+forward_formulas[[4]]
+
+forward_cv[5] <- cv_fun(f4_1)
+forward_formulas[[5]] <- f4_1
+
+forward_cv
+print(as.character(forward_formulas))
+
+forward_formulas[[which.min(forward_cv)]]
+```
+
+How does your answer compare to what we found in class?
+Ans: The chosen model is the same (DriversKilled ~ law + PetrolPrice + kms2), but the MSE are different, most of MSE are lower in using 5-fold cross-validation.
+
+```{r}
+# (b) Backward Stepwise Selection with LOOCV and 5-fold cross-validation
+## 5-fold cross-validation
+set.seed(3)
+
+backward_cv <- vector("numeric", 5)
+backward_formulas <- vector(mode = "list", 5)
+
+backward_cv[5] <- cv_fun(f4_1)  
+backward_formulas[[5]] <- f4_1
+
+M_formulas1 <- list(f3_1, f3_2, f3_3, f3_4)
+cv1 <- sapply(M_formulas1, cv_fun)
+backward_cv[4] <- min(cv1)
+backward_formulas[[4]] <- M_formulas1[[which.min(cv1)]]
+backward_formulas[[4]] 
+
+M_formulas1 <- list(f2_1, f2_3, f2_5)
+cv1 <- sapply(M_formulas1, cv_fun)
+backward_cv[3] <- min(cv1) 
+backward_formulas[[3]] <- M_formulas1[[which.min(cv1)]]
+backward_formulas[[3]] 
+
+M_formulas1 <- list(f1_2, f1_4)
+cv1 <- sapply(M_formulas1, cv_fun)
+backward_cv[2] <- min(cv1) 
+backward_formulas[[2]] <- M_formulas1[[which.min(cv1)]]
+backward_formulas[[2]] 
+
+backward_cv[1] <- cv_fun(f0_1)
+backward_formulas[[1]] <- f0_1
+
+backward_cv
+print(as.character(backward_formulas))
+
+backward_formulas[[which.min(backward_cv)]]
+
+## LOOCV
+
+cv_fun1 <- function(f) {
+  glmfit1 <- glm(f, data = seatbelts)
+  cv.glm(data = seatbelts, glmfit1)$delta[1]
+}
+
+backward_cv[5] <- cv_fun1(f4_1)  
+backward_formulas[[5]] <- f4_1
+
+M_formulas2 <- list(f3_1, f3_2, f3_3, f3_4)
+cv2 <- sapply(M_formulas2, cv_fun1)
+backward_cv[4] <- min(cv2)
+backward_formulas[[4]] <- M_formulas2[[which.min(cv2)]]
+backward_formulas[[4]] 
+
+M_formulas2 <- list(f2_1, f2_3, f2_5)
+cv2 <- sapply(M_formulas2, cv_fun1)
+backward_cv[3] <- min(cv2) 
+backward_formulas[[3]] <- M_formulas2[[which.min(cv2)]]
+backward_formulas[[3]] 
+
+M_formulas2 <- list(f1_2, f1_4)
+cv2 <- sapply(M_formulas2, cv_fun1)
+backward_cv[2] <- min(cv2) 
+backward_formulas[[2]] <- M_formulas2[[which.min(cv2)]]
+backward_formulas[[2]] 
+
+backward_cv[1] <- cv_fun1(f0_1)
+backward_formulas[[1]] <- f0_1
+
+backward_cv
+print(as.character(backward_formulas))
+
+backward_formulas[[which.min(backward_cv)]]
+
+```
+
+How do your answers compare to what you found in (a) and (b), and in class?
+Ans: By using 5-fold cross-validation and leave-one-out cross-validation in Backward Stepwise Selection to choose a model, we found that the final model selected with the minimum MSE is the same (DriversKilled ~ law + PetrolPrice + kms2). However, there are some differences, including the different models chosen in different steps and the MSE values being different, but the differences are relatively small.
+
+We can not compare the answer to the in class result, because we did not use the cross-validation in Backward Stepwise Selection to choose a model in class.
+
+## 3 Bonus problem (optional) 
+```{r}
+# Redo problem 2(a), using algorithm 6.1 from ISLAR
+set.seed(3)
+
+```
+
+How does your answer compare to 2(a)? What is the advantage of using algorithm 6.1?
