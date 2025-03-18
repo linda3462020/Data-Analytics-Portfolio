@@ -1,0 +1,25 @@
+---
+title: "Lab-01: Introduction to AWS and RStudio"
+author: Chu-Chun, Ku
+output: html_document
+---
+
+# EC2 Instance
+
+a.  Screenshot of your security group "Inbound" rule. 
+![](screenshot.png)
+
+
+```{r}
+1 + 2
+```
+
+b.  Screenshot of your EC2 instance "Details" tab.
+![](instance.png)
+
+c.  Screenshot of your RStudio server.
+![](rstudio.png)
+
+# List of all files in your `lab-01` folder
+
+Create an itemized list of all final files in your `lab-01` folder.
