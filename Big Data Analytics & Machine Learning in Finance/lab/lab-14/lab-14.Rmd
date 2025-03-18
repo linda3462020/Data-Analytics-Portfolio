@@ -1,0 +1,97 @@
+---
+title: "Lab 14 - Bagging, random forests, and boosting"
+author: Chu-Chun Ku
+output:
+  html_document:
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+knitr::knit_meta(clean=T)
+```
+
+## 0 load the packages 
+```{r}
+library(tidyverse)
+library(randomForest)
+library(caret)
+```
+
+## 1 create a data frame
+```{r}
+# load the data and set stringsAsFactors to TRUE
+ebay.df <- read.csv("eBayAuctions-lab14.csv", stringsAsFactors = TRUE)
+
+# first six rows 
+head(ebay.df)
+
+# column names
+names(ebay.df)
+```
+
+## 2 convert numeric variables to categorical variables
+```{r}
+# convert Duration to a categorical variable
+ebay.df$Duration <- as.factor(ebay.df$Duration)
+
+# convert Competitive. to a categorical variable
+ebay.df$Competitive. <- as.factor(ebay.df$Competitive.)
+
+# return the structure 
+str(ebay.df)
+```
+
+
+## 3 bagging 
+
+### 3.1 fit a bagging algorithm 
+```{r}
+set.seed(1)
+bag <- randomForest(Competitive. ~ ., data = ebay.df, importance = TRUE)
+bag
+```
+
+### 3.2 make predictions
+```{r}
+# predicted probabilities
+bag.prob <- predict(bag, ebay.df , type="prob")
+head(bag.prob)
+# predicted classes
+bag.pred <- predict(bag, ebay.df , type="class")
+head(bag.pred)
+```
+
+### 3.3 create a confusion matrix 
+```{r}
+confusionMatrix(as.factor(bag.pred), ebay.df$Competitive., positive = "1")
+```
+
+## 4 random forests 
+
+### 4.1 fit a random forests algorithm 
+```{r}
+set.seed(1)
+rf <- randomForest(Competitive. ~ ., data = ebay.df, mtry=4)
+```
+
+### 4.2 variable importance plot 
+```{r}
+varImpPlot(rf)
+```
+
+### 4.3 make predictions 
+```{r}
+# predicted probabilities 
+rf.pred.prob <- predict(rf, ebay.df, type="prob")
+head(rf.pred.prob)
+
+# predicted classes
+rf.pred.class <- predict(rf, ebay.df, type="class")
+head(rf.pred.class)
+```
+
+### 4.4 create a confusion matrix 
+```{r}
+confusionMatrix(as.factor(rf.pred.class), ebay.df$Competitive., positive = "1")
+```
+
