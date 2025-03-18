@@ -1,0 +1,300 @@
+---
+title: "Final project - A+ team"
+author: "Chu-Chun Ku, Yi-Ting Lee, Hsiang Lee "
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Case Overview
+#### The challenge we faced was that Cook County, Illinois, previously used outdated SPSS technology to assess property values, which lacked transparency and accuracy. Our goal is to transition to using R for property value predictions and to develop an effective predictive model that minimizes Mean Squared Error (MSE). This process is designed to be open and transparent, fostering public trust. Using historical property data, we aim to build the model to predict residential property values in Cook County and estimate market values for 10,000 properties, ensuring fair and accurate assessments.
+
+# Time Use
+#### 10 mins
+
+# Install tools
+
+### Purpose:
+#### Load necessary libraries for data manipulation (tidyverse), visualization (ggplot2), random forest modeling (randomForest), and hyperparameter tuning (caret).
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(randomForest)
+library(caret) 
+
+```
+
+
+
+
+# Import data and clean data
+
+### Purpose:
+#### - Load the dataset (historic_property_data.csv) and a corresponding codebook (codebook.csv) that describes the variables.
+#### - Identify relevant columns that exist in both the dataset and codebook.
+#### - Filter for predictors (var_is_predictor == TRUE) and the target variable (sale_price renamed to assessed_value).
+#### - Create a clean dataset (m_data) containing only relevant predictors and the target variable.
+#### - Save the filtered variables for record-keeping.
+
+```{r}
+h_data <- read_csv("historic_property_data.csv")
+nrow(h_data)
+head(h_data)
+colnames(h_data)
+
+codebook <- read.csv("codebook.csv")
+
+# Find if variables in historic_property_data.csv exist in the codebook
+relevant_columns <- intersect(names(h_data), codebook$var_name_standard)
+
+# Filter relevant variables in the codebook
+filtered_codebook <- codebook %>% 
+filter(var_name_standard %in% relevant_columns)
+
+# Select columns that are suitable as predictors
+predictor_columns <- filtered_codebook %>% 
+  filter(var_is_predictor == TRUE) %>%
+  pull(var_name_standard)  # Extract variable names
+
+# Select suitable columns as predictors from historic_property_data
+m_data <- h_data %>%
+  select(all_of(predictor_columns), assessed_value = sale_price) 
+# Replace `sale_price` as the target variable
+
+head(m_data)
+colnames(m_data)
+
+# Save the list of filtered variables to a file
+write.csv(filtered_codebook, "selected_predictor_codebook.csv", row.names = FALSE)
+
+```
+
+
+
+
+# Data Summary
+
+### Purpose:
+#### - Summarize the numeric columns by calculating their mean and standard deviation.
+#### - Calculate the correlation matrix for all numeric columns and the target variable (assessed_value).
+
+```{r}
+
+result <- m_data %>%
+  summarize(across(where(is.numeric), 
+  list(mean = ~ mean(.x, na.rm = TRUE), 
+  sd = ~ sd(.x, na.rm = TRUE)),
+  .names = "{col}_{fn}")) %>%
+  mutate(n = n()) %>%
+  round(3)
+result
+
+cor_matrix <- m_data %>%
+  select(assessed_value, where(is.numeric)) %>% # Select all numeric columns including assessed_value
+  cor(use = "complete.obs") 
+
+# View the correlation with assessed_value
+assessed_value_cor <- cor_matrix["assessed_value", -1]  # Select the correlation coefficients between assessed_value and other variables
+assessed_value_cor
+
+
+```
+
+
+
+### Key Observations:
+#### The correlation between the variables and assessed_value varies widely, with some showing weak correlations and others showing moderate to strong correlations.
+#### For example:
+####    char_bldg_sf has a moderate positive correlation with assessed_value (correlation coefficient = 0.45), which suggests a more linear relationship.
+####    On the other hand, char_beds shows a weak positive correlation with assessed_value (correlation coefficient ≈ 0.27), indicating a limited linear relationship.
+
+#### Based on these observations, the weak linear relationships with some variables, such as char_beds, imply that linear models like Lasso regression might not perform well. Therefore, Random Forest is a more appropriate choice for capturing these complex, non-linear relationships.
+
+
+# Check Predictor Types
+
+### Purpose:
+#### - Check the data types of columns in m_data to separate numeric and non-numeric predictors.
+#### - Display the count and names of numeric and non-numeric columns for reference.
+
+```{r}
+# Check the data type of each column
+col_types <- sapply(m_data, class)
+
+# Display numeric and non-numeric columns
+# Numeric columns
+numeric_columns <- names(col_types[col_types == "numeric"])
+# Non-numeric columns
+non_numeric_columns <- names(col_types[col_types != "numeric"]) 
+
+
+# Display results
+cat("Numeric columns: ", length(numeric_columns), "\n")
+cat("Non-numeric columns: ", length(non_numeric_columns),  "\n")
+
+# If you want to display specific column names:
+cat("Numeric column names: ", paste(numeric_columns, collapse = ", "), "\n")
+cat("Non-numeric column names: ", paste(non_numeric_columns, collapse = ", "), "\n")
+
+```
+
+
+
+
+
+# Check the target variable
+
+### Purpose:
+#### - Summarize the target variable to understand its range and central tendency.
+#### - Count the number of predictors.
+
+```{r}
+summary(m_data$assessed_value)
+# How many predictors are available?
+num.p <- length(names(m_data))-1
+cat("\n")
+print(paste("Number of predictors is:", num.p))
+
+```
+
+
+
+# Enhance the model's explained variance (increase R²)
+
+### Purpose:
+#### - Train an initial random forest model with default settings (mtry = 6, ntree = 100) to estimate variable importance.
+#### - Select the top 20 most important features based on mean decrease in accuracy and update the dataset for further optimization.
+
+```{r}
+# Check and handle missing values
+# Check the number of missing values in each column
+colSums(is.na(m_data)) 
+# Remove rows with missing values
+m_data <- na.omit(m_data) 
+
+# Ensure the correct dataset is used
+set.seed(3)
+
+# Initial random forest model
+rf_model <- randomForest(
+  assessed_value ~ ., 
+  data = m_data, 
+  mtry = 6, 
+  ntree = 100, 
+  importance = TRUE
+)
+
+# Select the top 20 most important features
+important_features <- rownames(importance(rf_model))[order(importance(rf_model)[, 1], decreasing = TRUE)][1:20]
+
+# Recreate the dataset with selected features and target variable
+m_data <- m_data[, c(important_features, "assessed_value")]
+
+# Tune the random forest model's hyperparameters
+set.seed(3)
+# 5-fold cross-validation
+train_control <- trainControl(method = "cv", number = 5)
+# Test different mtry values
+grid <- expand.grid(mtry = seq(2, ncol(m_data) - 1, by = 1)) 
+  rf_tuned <- train(
+  assessed_value ~ ., 
+  data = m_data, 
+  method = "rf", 
+  trControl = train_control, 
+  tuneGrid = grid
+)
+
+# Display the best mtry value
+rf_tuned$bestTune
+
+# Final random forest model
+set.seed(3)
+rf_model1 <- randomForest(
+  assessed_value ~ ., 
+  data = m_data, 
+  mtry = rf_tuned$bestTune$mtry, 
+  ntree = 1000,
+  importance = TRUE
+)
+
+# Display model results
+rf_model1
+
+# Visualize feature importance
+importance(rf_model1)
+varImpPlot(rf_model1)
+
+```
+
+
+
+
+# Predict Property Assessed Values 
+
+### Purpose:
+#### The purpose of this script is to predict property assessed values based on a pre-trained random forest model. The script cleans the prediction dataset, handles missing values, applies the trained model to generate predictions, and outputs the results in a structured format for further analysis or reporting. It also provides summary statistics to evaluate the distribution of predicted values.
+
+```{r}
+# Load and Examine New Data
+p_data <- read_csv("predict_property_data.csv")
+nrow(p_data)
+head(p_data)
+colnames(p_data)
+
+# Fill missing values for categorical and numerical variables
+predict_data_clean <- p_data[, important_features]
+predict_data_clean[] <- lapply(predict_data_clean, function(x) {
+  if(is.factor(x)) {
+  # For categorical variables, fill missing values with the most frequent category (mode)
+  levels(x)[which.max(table(x))]  
+  } else {
+  # For numerical variables, fill missing values with the median value
+  ifelse(is.na(x), median(x, na.rm = TRUE), x)
+  }
+})
+
+# Use the trained random forest model to make predictions
+predicted_values <- predict(rf_model1, newdata = predict_data_clean)
+
+# View the prediction results
+head(predicted_values)
+
+# Combine predictions with the `pid` column from the original data
+output <- data.frame(
+  pid = p_data$pid, # Extract the property IDs (`pid`)
+  assessed_value = predicted_values  # Include the predicted `assessed_value
+)
+
+# Round the predicted `assessed_value` to two decimal places for consistency
+output$assessed_value <- round(output$assessed_value, 2)
+
+
+# Preview the final output
+head(output)
+
+# Summarize the predicted values
+summary_stats <- summary(output$assessed_value)
+summary_stats
+summary_sd <- sd(output$assessed_value)
+cat("Standard Deviation:", summary_sd, "\n")
+```
+
+
+
+# Visualize the Distribution of Predicted Assessed Values
+
+```{r}
+ggplot(output, aes(x = assessed_value)) +
+  geom_histogram(binwidth = 50000, fill = "lightblue", color = "black") +
+  scale_x_continuous(breaks = seq(0, max(output$assessed_value, na.rm = TRUE), by = 200000)) +
+  labs(title = "Distribution of Predicted Assessed Values", x = "Assessed Value", y = "Frequency")
+```
+
+
+# Save the results to a .csv file
+
+```{r}
+write.csv(output, "predicted_assessed_values.csv", row.names = FALSE)
+```
+
