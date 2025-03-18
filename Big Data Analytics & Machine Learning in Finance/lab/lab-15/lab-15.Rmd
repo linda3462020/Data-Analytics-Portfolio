@@ -1,0 +1,112 @@
+---
+title: "Lab 15 - Neural networks"
+author: Chu-Chun Ku
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    theme: simplex
+    number_sections: false
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+knitr::knit_meta(clean=T)
+```
+
+## 0 load the packages 
+```{r}
+library(neuralnet) 
+library(caret)
+
+```
+
+## 1 create a data frame
+```{r}
+# load the data 
+df <- read.csv("EastWestAirlinesNN.csv")
+# first six rows 
+head(df)
+# column names
+names(df)
+```
+
+## 2 create two outcome dummies to represent output nodes  
+```{r}
+# create a variable named purchase
+df$purchase <- df$Phone_sale == 1
+# create a variable named not_purchase
+df$not_purchase <- df$Phone_sale == 0
+```
+
+## 3 remove unnecessary variables
+```{r}
+# remove ID column and update df 
+df <- df[, -1]
+# column names 
+names(df)
+```
+
+## 4 remove rows with missing values
+```{r}
+
+df <- na.omit(df)
+```
+
+## 5 data partition 
+```{r}
+# set the seed 
+set.seed(1)
+# row indexes of the training set
+train.index <- sample(c(1:dim(df)[1]) , 0.6 * dim(df)[1])
+# training set
+train.df <- df[train.index, ]
+# test set
+test.df <- df[-train.index, ]
+```
+
+## 6 normalize predictors to a scale of [0, 1] 
+```{r}
+# estimate the transformation 
+norm.values <- preProcess(train.df[,c(1:14)], method="range") 
+# normalize the numerical predictors in the training set 
+train.norm.df <- predict(norm.values, train.df[,c(1:14)])
+# normalize the numerical predictors in the test set 
+test.norm.df <- predict(norm.values, test.df[,c(1:14)])
+```
+
+## 7 fit a neural network on the training set 
+```{r}
+# set the random seed 
+set.seed(1)
+# fit a neural network that has a single hidden layer with 5 nodes (should take ~ 1 minute)
+nn <- neuralnet(train.df$not_purchase + train.df$purchase ~ Topflight + Balance + Qual_miles + cc1_miles. + cc2_miles. + cc3_miles. + Bonus_miles + Bonus_trans + Flight_miles_12mo + Flight_trans_12 + Online_12 + Email + Club_member + Any_cc_miles_12mo, data=train.norm.df, linear.output = FALSE, hidden = 5)
+# plot the network
+plot(nn, rep = "best")
+# display weights
+nn$weights
+```
+
+## 8 generate predicted probabilities for records in the test set  
+```{r}
+# make predictions using compute() 
+nn.pred <- compute(nn, test.norm.df)
+
+# predicted probabilities of making purchases
+nn.pred.prob <- nn.pred$net.result[, 2] / (nn.pred$net.result[, 1] + nn.pred$net.result[, 2])
+
+```
+
+## 9 generate predicted classes for records in the test set 
+```{r}
+nn.pred.class <- ifelse(nn.pred.prob > 0.5, 1, 0)
+
+```
+
+## 10 create a confusion matrix for records in the test set
+```{r}
+confusionMatrix(as.factor(nn.pred.class), as.factor(test.df$Phone_sale), positive = "1")
+
+
+```
