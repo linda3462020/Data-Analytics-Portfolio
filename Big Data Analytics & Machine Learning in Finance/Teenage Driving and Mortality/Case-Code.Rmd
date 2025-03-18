@@ -1,0 +1,254 @@
+---
+title: "Problem Set 2 - A+ team"
+author: Chu-Chun Ku, Yi-Ting Lee, Hsiang Lee 
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    theme: simplex
+    number_sections: false
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+## Load the package 
+```{r}
+library(haven)
+library(dplyr)
+library(knitr)
+data <- read_dta("all.dta")
+head(data)
+```
+
+## Check data
+```{r}
+summary(data)
+sum(is.na(data))
+```
+
+## 1 Mortality Rate Differences and Minimum Legal Driving Age: Exploring Causal Impacts
+1. Calculate mortality rates due to any cause for individuals in the sample who are 1–24 months above the MLDA and for those who are 1–24 months below the MLDA. Does this difference between these two groups plausibly describe the causal effect of reaching the MLDA on mortality? Why or why not?
+
+Answer: The descriptive difference shows that the mortality rate is higher for those who reach the MLDA, with a difference of 30.29 per 100,000 person-years. However, this is only observational, does not account for other factors, and therefore cannot confirm causal effects.
+
+The Regression Discontinuity analysis reveals a significant causal effect of reaching the MLDA on mortality (p < 0.001), indicating that the descriptive difference partly reflects the causal impact, though it may overestimate the true effect.
+
+### 1.1 Calculating Mortality Rates Above and Below the MLDA
+```{r}
+# Select rows where agemo_mda is between -24 and 24
+data_up24 <- data[data$agemo_mda <= 24 & data$agemo_mda >= 1, ] # 1–24 months (above driving age)
+data_up24
+data_down24 <- data[data$agemo_mda <= -1 & data$agemo_mda >= -24, ] # -1 to -24 months (below driving age)
+data_down24
+# Calculate mortality rates
+death_rate_up24 <- 100000 * sum(data_up24$cod_any) / (sum(data_up24$pop) / 12)
+death_rate_down24 <- 100000 * sum(data_down24$cod_any) / (sum(data_down24$pop) / 12)
+
+# Display results
+cat("Death rate above MLDA (1–24 months):", death_rate_up24, "\n")
+cat("Death rate below MLDA (1–24 months):", death_rate_down24, "\n")
+cat("Difference in death rates:", death_rate_up24 - death_rate_down24)
+
+```
+## 1.2 Regression Discontinuity Analysis for Mortality Rates
+```{r}
+
+# Add treatment variable indicating whether agemo_mda >= 0
+data <- data %>%
+  mutate(TREAT = as.numeric(agemo_mda >= 0))
+
+# Calculate mortality rates per 100,000 person-years
+data <- data %>%
+  mutate(mortality_any = 100000 * cod_any / (pop / 12))
+
+# Filter data within -24 to 24 months
+data_rd <- data[abs(data$agemo_mda) <= 24 & data$agemo_mda != 0, ]
+
+# Build RD model allowing different trends on either side of the threshold
+rd_model <- lm(mortality_any ~ TREAT + agemo_mda + TREAT * agemo_mda, data = data_rd)
+
+# Display model results
+summary(rd_model)
+```
+
+## 2 Scatter Plot Analysis of Mortality Rates: Mortality from Any Cause and Traffic Accidents
+2. Create a scatter plot showing mortality rates due to (a) any cause and (b) motor vehicle accidents.Use black squares as markers for any cause of death and blue circles as markers for mortality due to motor vehicle accidents. Limit the plot to people who are within 2 years of the MLDA. Add a vertical line at the age at which driving eligibility begins.
+
+### 2.1  Calculate and Filter Mortality Rates for MLDA Analysis
+```{r}
+# load package
+library(ggplot2)
+
+# Calculate mortality rates (per 100,000 person-years)
+data$death_rate_any <- 100000 * data$cod_any / (data$pop / 12)
+data$death_rate_mva <- 100000 * data$cod_MVA / (data$pop / 12)
+summary(data$death_rate_any)
+summary(data$death_rate_mva)
+
+# Select individuals within 2 years of the minimum legal driving age
+data_in2years <- data[data$agemo_mda >= -24 & data$agemo_mda <= 24, ]
+```
+
+### 2.2 Create Scatter Plot of Mortality Rates Near MLDA
+```{r}
+# Create scatter plot
+ggplot(data_in2years, aes(x = agemo_mda)) +
+  # Use black squares to represent mortality rates from any cause
+  geom_point(aes(y = death_rate_any), shape = 15, color = "black") +
+  # Use blue circles to represent mortality rates from motor vehicle accidents
+  geom_point(aes(y = death_rate_mva), shape = 16, color = "blue") +
+  # Add a vertical line to represent the age at which driving eligibility begins
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  # Set plot title and axis labels
+  labs(title = "Mortality Rates Near Minimum Legal Driving Age",
+       x = "Months from Minimum Legal Driving Age (MLDA)",
+       y = "Mortality Rate (per 100,000 person-years)") +
+  # Set plot style
+  theme_minimal() +
+  theme(legend.position = "none")  # Hide legend
+
+```
+
+## 3 Non-Parametric "Donut" Regression Discontinuity Design (RD): Estimating Mortality Effects and Bandwidth Analysis
+3. Non-parametric “donut” RD. Calculate a non-parametric RD estimated effect of driving on mortality rates due to (a) any cause and (b) motor vehicle accidents. Calculate these estimates using four different bandwidths: 48, 24, 12, and 6 months. Omit the partially-treated observation `agemo_mda==0` from the estimation to generate what is called a “donut” RD. Use linear regression to calculate all these values, and report and describe this equation in your answer below. Report the results in a three-column table with 4 rows (one row per bandwidth). Column (1) should report the bandwidth, column (2) the RD estimate for all-cause mortality, and column (3) the RD estimate for motor vehicle accident mortality. Discuss whether/why point estimates and their precision change as the bandwidth becomes smaller.
+
+Answer: As the bandwidth decreases, the estimates for all-cause mortality and motor vehicle accident mortality gradually decrease, while the standard errors tend to increase. The change in precision as the bandwidth becomes smaller is due to two main reasons: (1) Sample size changes: As the bandwidth narrows, the sample size decreases, which causes the estimated treatment effect to become smaller. A larger bandwidth includes more data, allowing the regression model to capture more trends, resulting in a larger estimate. (2) Change in precision: The increase in precision (or standard error) reflects the reduction in sample size, which leads to greater uncertainty in the regression estimates.
+
+
+### 3.1 # Calculate mortality rates
+```{r}
+data <- data %>%
+  mutate(rate_any_cause = 100000 * cod_any / (pop / 12),
+         rate_motor_vehicle = 100000 * cod_MVA / (pop / 12),
+         above_mlda = ifelse(agemo_mda > 0, 1, 0))
+
+# Exclude partially treated observations
+data_donut <- data %>% filter(agemo_mda != 0)
+```
+
+### 3.2 Define a function to calculate RD estimates
+```{r}
+calculate_rd <- function(data, bandwidth) {
+  # Filter data within the bandwidth
+  subset_data <- data %>% filter(abs(agemo_mda) <= bandwidth)
+  
+  # Linear regression for any cause mortality
+  model_any <- lm(rate_any_cause ~ above_mlda, data = subset_data)
+  rd_any <- coef(summary(model_any))["above_mlda", 1]
+  
+  # Linear regression for motor vehicle mortality
+  model_mva <- lm(rate_motor_vehicle ~ above_mlda, data = subset_data)
+  rd_mva <- coef(summary(model_mva))["above_mlda", 1]
+  
+  # Return RD estimates
+  data.frame(
+    Bandwidth = bandwidth,
+    RD_All_Cause = rd_any,
+    RD_MVA = rd_mva
+  )
+}
+```
+
+### 3.3 Calculate RD estimates for all bandwidths
+```{r}
+bandwidths <- c(48, 24, 12, 6)
+results <- lapply(bandwidths, calculate_rd, data = data_donut)
+# Combine results into a data frame
+results_df <- do.call(rbind, results)
+```
+
+### 3.4 Create a table with results
+First Column: Age ranges (bandwidths) of 48, 24, 12, and 6 months.
+Second Column: RD estimates for mortality due to any cause.
+Third Column: RD estimates for mortality due to motor vehicle accidents.
+
+```{r}
+results_df
+```
+
+
+
+## 4 Parametric "Donut" Regression Discontinuity Design (RD): Estimating Mortality Effects and Bandwidth Analysis Comparison
+4. Parametric “donut” RD. Calculate a parametric RD estimated effect of driving on mortality rates due to (a) any cause and (b) motor vehicle accidents. Allow for linear trends on either side of the cutoff.
+Calculate these estimates using four different bandwidths: 48, 24, 12, and 6 months. Omit the partially-treated observation `agemo_mda==0` from the estimation to perform a “donut” RD. Use linear regression to calculate all these values, and report and describe this equation in your answer below. 
+Report the results in a three-column table with 4 rows (one row per bandwidth). 
+Column (1) should report the bandwidth, 
+column (2) the RD estimate for all-cause mortality, and 
+column (3) the RD estimate for motor vehicle accident mortality. Discuss whether/why point estimates and theirprecision change as the bandwidth becomes smaller. How do these parametric estimates compare to the non-parametric RD estimates?
+
+Answer: As the bandwidth narrows, point estimates for all-cause and MVA mortality decrease, reflecting reduced bias from distant observations. For example, all-cause mortality drops from 11.89 at 48 months to 6.01 at 6 months. However, smaller bandwidths reduce sample size, increasing standard errors and lowering precision, highlighting the trade-off between bias reduction and estimate reliability.
+
+In contrast, parametric RD estimates are significantly lower than non-parametric RD estimates. For example, with a 48-month bandwidth, the parametric estimate for all-cause mortality is 11.89, compared to 48.84 for the non-parametric method. Additionally, parametric RD is more stable across bandwidth changes and has lower standard errors, offering higher precision. Especially in cases with limited sample sizes, parametric methods provide more reliable results.
+
+
+### 4.1 Remove Partially Treated Observations
+```{r}
+# Exclude `agemo_mda == 0` for "donut" RD
+data_no0 <- data %>% filter(agemo_mda != 0)
+```
+
+### 4.2 Parametric Donut RD Analysis
+```{r}
+# Define the bandwidths and initialize results
+bandwidths <- c(48, 24, 12, 6)
+parametric_results <- data.frame(
+  Bandwidth = numeric(),
+  RD_AllCause = numeric(),
+  RD_MVA = numeric()
+)
+```
+
+### 4.3 Loop through Bandwidths and Perform Regression
+```{r}
+for (bw in bandwidths) {
+  # **5.3.1 Filter and Prepare Data for the Given Bandwidth**
+  data_bandwidth <- data_no0 %>%
+    filter(agemo_mda >= -bw & agemo_mda <= bw) %>%
+    mutate(
+      # Standardize mortality rates (per 100,000 population)
+      death_rate_any = 100000 * cod_any / (pop / 12),
+      death_rate_mva = 100000 * cod_MVA / (pop / 12),
+      # Create treatment indicator
+      treatment = ifelse(agemo_mda > 0, 1, 0)
+    )
+  
+  # **5.3.2 Linear Regression Models**
+  # All-cause mortality with interaction term
+  model_allcause <- lm(
+    death_rate_any ~ treatment + agemo_mda + treatment:agemo_mda,
+    data = data_bandwidth
+  )
+  
+  # Motor vehicle accident mortality with interaction term
+  model_mva <- lm(
+    death_rate_mva ~ treatment + agemo_mda + treatment:agemo_mda,
+    data = data_bandwidth
+  )
+  
+  # **5.3.3 Extract RD Estimates**
+  rd_allcause <- coef(summary(model_allcause))["treatment", "Estimate"]
+  rd_mva <- coef(summary(model_mva))["treatment", "Estimate"]
+  
+  # **5.3.4 Append Results**
+  parametric_results <- rbind(
+    parametric_results,
+    data.frame(Bandwidth = bw, RD_AllCause = rd_allcause, RD_MVA = rd_mva)
+  )
+}
+
+```
+
+### 4.4 Output Results
+```{r}
+# Generate a formatted table of RD estimates
+kable(
+  parametric_results,
+  col.names = c("Bandwidth (Months)", "RD Estimate (All-Cause Mortality)", "RD Estimate (MVA Mortality)"),
+  caption = "Parametric Donut RD Estimates with Linear Trends"
+)
+```
+```
+
