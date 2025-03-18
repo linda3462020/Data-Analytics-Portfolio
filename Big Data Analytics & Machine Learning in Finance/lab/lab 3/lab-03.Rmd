@@ -1,0 +1,142 @@
+---
+title: "Lab 03 - Data Wrangling"
+author: Chu-Chun Ku
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    theme: simplex
+    number_sections: false
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+## 0 load the package 
+```{r}
+library(tidyverse)
+```
+
+## 1 create a tibble 
+
+```{r}
+# load the data 
+df <- read_csv("firm.csv")
+# first six rows 
+head(df)
+# number of rows  
+nrow(df)
+# number of columns 
+ncol(df)
+# column names 
+names(df)
+```
+
+## 2 subset data 
+
+### 2.1 one column 
+```{r}
+df$NI
+select(df,NI)
+```
+
+### 2.2 three columns 
+```{r}
+df[,c(3,4,8)]
+select(df, FYEAR, TIC, NI)
+```
+
+### 2.3 four rows and three columns
+```{r}
+df[c(1:4),c(3,4,8)]
+
+```
+
+## 3 filter rows  
+
+### 3.1 observations that belong to AAPL in 2015 
+```{r}
+#Pick rows that TIC is equal to AAPL and FYEAR is equal to 2015 using df[,] and filter()
+df[df$TIC=="AAPL" & df$FYEAR==2015, ]
+filter(df,TIC=="AAPL", FYEAR==2015 )
+```
+
+### 3.2 observations that have the minimum NI value 
+```{r}
+#Pick rows that NI is equal to the minimum NI value using df[,] and filter().
+min(df$NI)
+df[df$NI==min(df$NI),]
+filter(df, df$NI==min(df$NI))
+```
+
+### 3.3 select columns of observations that belong to AAPL in 2015   
+
+```{r}
+#Select FYEAR, TIC, NI columns and pick rows that TIC is equal to AAPL and FYEAR is equal to 2015 using df[,].
+df[df$TIC=="AAPL" & df$FYEAR==2015, c("FYEAR","TIC","NI") ]
+```
+
+## 4 arrange rows 
+
+### 4.1 ascending order of NI
+```{r}
+# Reorder df in an ascending order of NI using arrange().
+arrange(df,NI)
+```
+
+### 4.2 descending order of NI
+```{r}
+# Reorder df in a descending order of NI using arrange() with desc()
+arrange(df, desc(NI))
+```
+
+### 4.3 ascending order of TIC and FYEAR, and descending order of NI
+
+```{r}
+# Reorder df in an ascending order of TIC and FYEAR, and descending order of NI using arrange()
+arrange(df, TIC, FYEAR, desc(NI))
+
+```
+
+## 5 create new variables  
+
+### 5.1 return on assets 
+
+```{r}
+# Create a new column named ROA in df, which divides net income (NI) by total assets (AT).
+df$ROA <- df$NI / df$AT
+head(df)
+```
+
+### 5.2 net income bin numbers  
+```{r}
+# step1: identify thresholds of 4 bins with an equal number of observations 
+bins <- quantile(df$NI, probs = c(0,0.25,0.5,0.75,1))
+
+# step2: remove the names of a named vector  
+bins <- unname(bins)
+
+# step3: bin NI  
+df$NI_bin <- .bincode(df$NI, bins, include.lowest = TRUE)
+table(df$NI_bin)
+
+```
+
+### 5.3 log of assets 
+```{r}
+# Create a new column named AT_LOG in df which computes the log value of total assets (AT) using mutate(). Use head() to print the first six rows of df.
+df <- mutate(df, AT_LOG = log(df$AT))
+head(df)
+```
+
+### 5.4 drop a column 
+
+```{r}
+# Remove return on assets (ROA) from df by assigning NULL to the column. Use head() to print the first six rows of df.
+df$ROA <- NULL
+head(df)
+
+```
+
